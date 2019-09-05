@@ -1,4 +1,8 @@
-utosave
+# This file is used to ignore files which are generated
+# ----------------------------------------------------------------------------
+
+*~
+*.autosave
 *.a
 *.core
 *.moc
