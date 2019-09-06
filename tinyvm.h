@@ -72,14 +72,16 @@ public:
     int getExecuteTimes() const;
 
     bool isRunning() const;
-
+protected:
+    void execInternal();
 private:
     int programCounter;
-    volatile int executeTimes;
-    volatile int thread_state;
-    volatile int vm_state;
+    int executeTimes;
+    volatile int threadState;
+     int vmState;
     int callIndex;
     std::vector<CallInfo*> callStack;
+    CallInfo* next_prepend_callinfo;
     std::vector<OpCode> codes;
 };
 

@@ -12,33 +12,31 @@ public:
         stackIndex(-1),
         argv(args),
         argvIndex(-1),
-        currentPc(0),
-        prevCall(nullptr),
-        nextCall(nullptr)
+        savedtPc(0),
+        prevCall(nullptr)
     {}
 
     ~CallInfo() {
         this->prevCall = nullptr;
-        this->nextCall = nullptr;
     }
 
     std::vector<int> dataStack;
     int stackIndex;
     std::vector<int> argv;
     int argvIndex;
-    int currentPc;
+    int savedtPc;
 
     CallInfo* prevCall;
-    CallInfo* nextCall;
 };
 
 TinyVM::TinyVM():
     programCounter(0),
     executeTimes(0),
-    thread_state(THREAD_STATE::NORMAL),
-    vm_state(VM_STATE::RUNNING),
+    threadState(THREAD_STATE::NORMAL),
+    vmState(VM_STATE::RUNNING),
     callIndex(-1),
-    callStack(256)
+    callStack(256),
+    next_prepend_callinfo(nullptr)
 {
     callStack[(this->callIndex+=1)] = new CallInfo(0, 16);
 }
@@ -47,7 +45,8 @@ TinyVM::~TinyVM()
 {
     // please use vm->interrup(); and wait is not running
     assert(!isRunning());
-    this->thread_state = THREAD_STATE::INTERRUPT;
+
+    this->threadState = THREAD_STATE::INTERRUPT;
 
     int index = callIndex;
     while(index -- > 0) {
@@ -57,7 +56,16 @@ TinyVM::~TinyVM()
 
 void TinyVM::interrup()
 {
-    this->thread_state = THREAD_STATE::INTERRUPT;
+    this->threadState = THREAD_STATE::INTERRUPT;
+}
+
+void TinyVM::exec()
+{
+    execInternal();
+    if (this->next_prepend_callinfo != nullptr) {
+        delete this->next_prepend_callinfo;
+        this->next_prepend_callinfo = nullptr;
+    }
 }
 
 void TinyVM::add(int op, int num)
@@ -65,26 +73,19 @@ void TinyVM::add(int op, int num)
     this->codes.push_back(OpCode{op, num});
 }
 
-void print_n_tab(int t) {
-    while(t-->0) {
-        std::cout << "  ";
-    }
-}
-
-void TinyVM::exec()
+void TinyVM::execInternal()
 {
     while(true) {
         this->executeTimes += 1;
         int pc = this->programCounter;
         this->programCounter += 1;
         const OpCode& op_code = this->codes[pc];
-        const auto op = op_code.op & this->thread_state;
+        const auto op = op_code.op & this->threadState;
 
         CallInfo* currentStack = callStack[this->callIndex];
 
 //     std::cout << "stack index:" << currentStack->stackIndex << std::endl;
 //        std::cout << ">>>>>>> pc:" << pc << std::endl;
-//        print_n_tab(this->callIndex);
 
         switch (op) {
         case OP_CODE::NONE :
@@ -239,8 +240,11 @@ void TinyVM::exec()
 
         case OP_CODE::ARGS: {
             auto args = op_code.num;
-            currentStack->nextCall = new CallInfo(args, 32);        // new call info
-            currentStack->nextCall->prevCall = currentStack;        // set prev call
+            next_prepend_callinfo = new CallInfo(args, 32);         // new call info
+            next_prepend_callinfo->prevCall = currentStack;
+
+//            currentStack->nextCall = new CallInfo(args, 32);        // new call info
+//            currentStack->nextCall->prevCall = currentStack;        // set prev call
 
 //             std::cout << "args" << args << std::endl;
 
@@ -248,10 +252,14 @@ void TinyVM::exec()
             break;
 
         case OP_CODE::PUSH_A: {
-            assert(currentStack->nextCall != nullptr);
+//            assert(currentStack->nextCall != nullptr);
+//            currentStack->nextCall->argv[(currentStack->nextCall->argvIndex +=1)]
+//                    = currentStack->dataStack[currentStack->stackIndex] ;
+//            currentStack->stackIndex -= 1;
 
-            currentStack->nextCall->argv[(currentStack->nextCall->argvIndex +=1)]
-                    = currentStack->dataStack[currentStack->stackIndex] ;
+            assert(next_prepend_callinfo != nullptr);
+            next_prepend_callinfo->argv[(next_prepend_callinfo->argvIndex +=1)]
+                     = currentStack->dataStack[currentStack->stackIndex];
             currentStack->stackIndex -= 1;
 
 //            std::cout << "pusha"  << std::endl;
@@ -260,9 +268,9 @@ void TinyVM::exec()
             break;
 
         case OP_CODE::CALL: {
-            currentStack->currentPc = pc;                     // 保存 pc
+            currentStack->savedtPc = pc;                     // 保存 pc
 
-            callStack[(this->callIndex+=1)] = currentStack->nextCall;
+            callStack[(this->callIndex+=1)] = next_prepend_callinfo;
 
             this->programCounter = op_code.num;
 
@@ -279,10 +287,15 @@ void TinyVM::exec()
             callStack[this->callIndex] = nullptr;
             this->callIndex -= 1;
 
-            this->programCounter =  prevCall->currentPc + 1;                    // 恢复 pc 并 + 1
+            this->programCounter =  prevCall->savedtPc + 1;                    // 恢复 pc 并 + 1
 
 //            std::cout << "ret " << prevCall->dataStack[prevCall->stackIndex]
 //                      << ", prevPC:" << prevCall->currentPc << std::endl;
+
+            if (this->next_prepend_callinfo == currentStack) {
+                // std::cout << "next_prepend_callinfo == currentStack" << std::endl;
+                this->next_prepend_callinfo = nullptr;
+            }
 
             delete currentStack;
         }
@@ -304,12 +317,13 @@ void TinyVM::exec()
         case OP_CODE::STOP :
             std::cout << "vm>Byte!" << std::endl;
 
-            this->vm_state = VM_STATE::TERMINATED;
+            this->vmState = VM_STATE::TERMINATED;
 
             return;
 
         default:
             std::cerr << "vm error>unknow op:" << op << std::endl;
+
             return;
         }
     }
@@ -322,7 +336,7 @@ int TinyVM::getExecuteTimes() const
 
 bool TinyVM::isRunning() const
 {
-    return this->vm_state == VM_STATE::RUNNING;
+    return this->vmState == VM_STATE::RUNNING;
 }
 
 } // namespace qyvlik

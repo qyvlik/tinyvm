@@ -4,9 +4,9 @@
 
 int main()
 {
-    test_vm_interrup();
+//    test_vm_interrup();
 
-    test_fibonacci();
+//    test_fibonacci();
 
     test_fibonacci_with_thread();
 
