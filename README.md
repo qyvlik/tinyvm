@@ -1,2 +1,2 @@
 # tinyvm
-tinyvm implement by c++11
+tinyvm implement by c++
